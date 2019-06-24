@@ -3,7 +3,7 @@ import * as dbService from '../data-services/firestore';
 import { writeTimeSheetToQBooks } from './qbooksController';
 
 import { settings } from '../config';
-import { ITimeSheetEvent, IAuthCredential, IAvazaUserProfile } from '../interface';
+import { IAvazaTimeSheetEvent, IAuthCredential, IAvazaUserProfile, AvazaTimeSheet } from '../interface';
 
 const authPath = 'auth/avaza';
 
@@ -70,6 +70,22 @@ async function getUserProfile(userId: number, access_token: string): Promise<IAv
     }
 }
 
+async function getFullTimeSheet(timesheetId: number, access_token: string): Promise<AvazaTimeSheet> {
+    return new Promise(async (resolve, reject) => {
+        const options = {
+            url: `https://api.avaza.com/api/Timesheet/${timesheetId}`,
+            headers: { 'Authorization': `Bearer ${access_token}` }
+        }
+
+        try {
+            const res: AvazaTimeSheet = JSON.parse(await rp.get(options));
+            resolve(res);
+        } catch (e) {
+            reject()
+        }
+    });
+}
+
 export const handleTokenRedirectForAvaza = async (req: any): Promise<any> => {
     const response: IAvazaTokenRedirectData = req.query;
     const auth = JSON.parse(await getAuthCredentialsForAvaza(response.code, 'authorization_code'));
@@ -85,7 +101,7 @@ export const handleTokenRedirectForAvaza = async (req: any): Promise<any> => {
 }
 
 export const handleTimesheetUpdate = async (req: any): Promise<any> => {
-    const timeSheetEvents: ITimeSheetEvent[] = req.body;
+    const timeSheetEvents: IAvazaTimeSheetEvent[] = req.body;
     const avazaCredential: IAuthCredential = await getAvazaAuthCredential();
 
     for (const sheet of timeSheetEvents) {
@@ -97,9 +113,14 @@ export const handleTimesheetUpdate = async (req: any): Promise<any> => {
                     avazaCredential.access_token
                 );
 
+                const fullTimeSheet: AvazaTimeSheet = await getFullTimeSheet(
+                    sheet.TimeSheetEntryID,
+                    avazaCredential.access_token
+                );
+
                 await writeTimeSheetToQBooks(
                     profile.Email,
-                    sheet
+                    fullTimeSheet
                 );
             } catch (e) {
                 console.log(e);

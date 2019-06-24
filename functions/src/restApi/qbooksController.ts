@@ -6,10 +6,9 @@ import {
     IObjectMap,
     IAuthCredential,
     IQbooksEmployee,
-    ITimeSheetEvent,
-    ITimeTracking
+    ITimeTracking,
+    AvazaTimeSheet
 } from '../interface';
-import { addMinutes } from 'date-fns';
 
 const OAuthClient = require('intuit-oauth');
 const authPath = 'auth/qbooks';
@@ -21,6 +20,9 @@ const oauthClient = new OAuthClient({
     environment: 'sandbox',
     redirectUri: settings.qbooks.sandbox.redirecturi
 });
+
+const baseUrl = oauthClient.environment === 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+const companyId = oauthClient.environment === 'sandbox' ? settings.qbooks.sandbox.companyId : settings.qbooks.live.companyId;
 
 function getNewTokenManually(token: string) {
     // Make a post request to Stripe's oauth token endpoint
@@ -62,7 +64,6 @@ export const getAuthCredentialFromDB = async (): Promise<IAuthCredential> => {
     return Promise.resolve(credential);
 }
 
-
 function getAuthCredentialsFromUrl(url: string): Promise<IObjectMap<any>> {
     return new Promise((resolve, reject) => {
         // Parse the redirect URL for authCode and exchange them for tokens
@@ -81,9 +82,8 @@ function getAuthCredentialsFromUrl(url: string): Promise<IObjectMap<any>> {
 
 async function getUserProfile(email: string, token: string): Promise<IQbooksEmployee> {
     return new Promise(async (resolve, reject) => {
-        const baseUrl = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
         const query = encodeURIComponent("SELECT * from Employee Where PrimaryEmailAddr =" + "'" + email + "'");
-        const uri = `${baseUrl}v3/company/${settings.qbooks.sandbox.companyId}/query?query=${query}&minorversion=4`;
+        const uri = `${baseUrl}v3/company/${companyId}/query?query=${query}&minorversion=4`;
 
         const options: any = {
             uri,
@@ -99,12 +99,50 @@ async function getUserProfile(email: string, token: string): Promise<IQbooksEmpl
     });
 }
 
+async function getCustomer(companyName: string, token: string): Promise<any> {
+    return new Promise(async (resolve, reject) => {
+        const query = encodeURIComponent("SELECT * from Customer Where CompanyName =" + "'" + companyName + "'");
+        const uri = `${baseUrl}v3/company/${companyId}/query?query=${query}&minorversion=4`;
+
+        const options: any = {
+            uri,
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+        };
+
+        try {
+            const res: { QueryResponse: { Customer: any[] } } = JSON.parse(await rp.get(options));
+            resolve(res.QueryResponse.Customer && res.QueryResponse.Customer[0]);
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+async function createTimeActivityForUser(timeActivity: any, token: string): Promise<any> {
+    console.log('TimeActivity: ', timeActivity)
+    return new Promise(async (resolve, reject) => {
+        const uri = `${baseUrl}v3/company/${companyId}/timeactivity&minorversion=4`;
+
+        const options: any = {
+            uri,
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+            body: timeActivity
+        };
+
+        try {
+            await rp.post(options);
+            resolve(true);
+        } catch (e) {
+            console.log(e)
+            reject(e);
+        }
+    });
+}
+
 export const getQBooksAuthUri = (res: any) => {
-    // AuthorizationUri
     const authUri = oauthClient.authorizeUri({
         scope: [
             OAuthClient.scopes.Accounting,
-            // OAuthClient.scopes.TimeTracking,
             OAuthClient.scopes.OpenId,
             OAuthClient.scopes.Profile,
             OAuthClient.scopes.Email,
@@ -134,33 +172,48 @@ export const handleTokenRedirectForQuickbooks = async (req: any): Promise<any> =
     }
 }
 
-export const writeTimeSheetToQBooks = async (userEmail: string, avazaTimeSheet: ITimeSheetEvent): Promise<any> => {
-    try {
-        const credential: IAuthCredential = await getAuthCredentialFromDB();
-        const profile: IQbooksEmployee = await getUserProfile(userEmail, credential.access_token);
 
-        if (profile) {
-            const now = new Date();
+export const writeTimeSheetToQBooks = async (userEmail: string, avazaTimeSheet: AvazaTimeSheet): Promise<any> => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const credential: IAuthCredential = await getAuthCredentialFromDB();
+            const profile: IQbooksEmployee = await getUserProfile(userEmail, credential.access_token);
+            const customer: { Id: string, CompanyName: string } = await getCustomer(avazaTimeSheet.CustomerName, credential.access_token);
 
-            const timeActivity: ITimeTracking = {
-                NameOf: 'Employee',
-                EmployeeRef: {
-                    value: profile.Id,
-                    name: profile.DisplayName
-                },
-                StartTime: now.toDateString(),
-                EndTime: addMinutes(now, avazaTimeSheet.Duration).toDateString()
+            console.log('customer here: ', customer);
+
+            if (profile) {
+                const timeActivity: ITimeTracking = {
+                    TxnDate: avazaTimeSheet.EntryDate,
+                    NameOf: 'Employee',
+                    EmployeeRef: {
+                        value: profile.Id,
+                        name: profile.DisplayName
+                    },
+                    ItemRef: {
+                        name: 'Hours',
+                        value: `${avazaTimeSheet.Duration}`
+                    },
+                    CustomerRef: {
+                        name: customer.CompanyName,
+                        value: customer.Id
+                    }
+                }
+
+                try {
+                    await createTimeActivityForUser(JSON.parse(JSON.stringify(timeActivity)), credential.access_token);
+                } catch (e) {
+                    console.log('Error creating time activity ', e)
+                }
+            } else {
+                console.log('No profile found');
             }
 
-            // @TODO create a time activity for the employee
-            // https://sandbox-quickbooks.api.intuit.com/v3/company/<companyID>/timeactivity?minorversion=4
-            console.log(timeActivity);
-        } else {
-            console.log('No profile found');
-        }
-    } catch (e) {
-        console.log(e);
-    }
+            resolve();
 
-    return Promise.resolve(true);
+        } catch (e) {
+            console.log('Error:', e);
+            reject();
+        }
+    });
 }

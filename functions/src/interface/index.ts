@@ -12,13 +12,20 @@ export interface IAuthCredential {
 }
 
 export interface ITimeTracking {
+    TxnDate: Date,
     NameOf: 'Employee',
     EmployeeRef: {
         value: string,
         name: string
     },
-    StartTime: string,
-    EndTime: string
+    ItemRef: {
+        value: string,
+        name: "Hours"
+    },
+    CustomerRef: {
+        name: string,
+        value: string
+    }
 }
 
 export interface IQbooksEmployee {
@@ -31,7 +38,7 @@ export interface IQbooksEmployee {
         CreateTime: string;
         LastUpdatedTime: string;
     },
-    GivenName:string;
+    GivenName: string;
     FamilyName: string;
     DisplayName: string;
     PrintOnCheckName: string;
@@ -44,7 +51,7 @@ export interface IQbooksEmployee {
     }
 }
 
-export interface ITimeSheetEvent {
+export interface IAvazaTimeSheetEvent {
     TimeSheetEntryID: number;
     Duration: number;
     EntryDate: string;
@@ -58,7 +65,40 @@ export interface ITimeSheetEvent {
     DateCreated: string;
     DateUpdated: string;
     WebhookNotificationItemID: number;
-    SubscriptionID: number
+    SubscriptionID: number;
+}
+
+export interface AvazaTimeSheet {
+    TimesheetEntryID: number;
+    UserIDFK: number;
+    Firstname: string;
+    Lastname: string;
+    Email: string;
+    ProjectIDFK: number;
+    ProjectTitle: string;
+    CustomerIDFK: number;
+    CustomerName: string;
+    TimesheetCategoryIDFK: number;
+    CategoryName: string;
+    Duration: number;
+    TimesheetEntryApprovalStatusCode: string;
+    HasTimer: boolean;
+    TimerStartedAtUTC: Date;
+    isBillable: boolean;
+    isInvoiced: boolean;
+    EntryDate: Date;
+    StartTimeLocal: Date;
+    StartTimeUTC: Date;
+    EndTimeLocal: Date;
+    EndTimeUTC: Date;
+    TimesheetUserTimeZone: string;
+    Notes: string;
+    TaskIDFK: number;
+    TaskTitle: string;
+    InvoiceIDFK: number;
+    InvoiceLineItemIDFK: number;
+    DateCreated: Date;
+    DateUpdated: Date;
 }
 
 export interface IAvazaUserProfile {

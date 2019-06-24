@@ -12,6 +12,12 @@ export const settings = {
             secret: config.qbooks.sandbox.secret,
             redirecturi: config.qbooks.sandbox.redirecturi,
             companyId: 123146326717784 // this is for the sandbox company
+        },
+        live: {
+            clientid: '',
+            secret: '',
+            redirecturi: '',
+            companyId: 123146419464414
         }
     }
 }
